@@ -1,3 +1,7 @@
+#pragma once
+
+#include "vtr_geometry.h"
+
 #include <limits>
 
 #include "vtr_assert.h"

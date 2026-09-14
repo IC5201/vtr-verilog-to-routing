@@ -1,3 +1,7 @@
+#pragma once
+
+#include "netlist.h"
+
 #include <algorithm>
 #include <numeric>
 
