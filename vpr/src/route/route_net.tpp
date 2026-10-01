@@ -7,6 +7,7 @@
 #include "route_net.h"
 
 #include <algorithm>
+#include <limits>
 #include <tuple>
 
 #include "connection_based_routing.h"
@@ -94,7 +95,8 @@ inline NetResultFlags route_net(ConnectionRouterType& router,
             net_list,
             connections_inf,
             router_opts,
-            worst_negative_slack);
+            worst_negative_slack,
+            budgeting_inf);
     }
 
     VTR_ASSERT(route_ctx.route_trees[net_id]);
@@ -215,7 +217,11 @@ inline NetResultFlags route_net(ConnectionRouterType& router,
     /* Update base costs according to fanout and criticality rules */
     update_rr_base_costs(num_sinks);
 
-    t_conn_delay_budget conn_delay_budget;
+    t_conn_delay_budget conn_delay_budget{.short_path_criticality = 0.f,
+                                          .min_delay = 0.f,
+                                          .target_delay = 0.f,
+                                          .max_delay = std::numeric_limits<float>::infinity(),
+                                          .routing_budgets_algorithm = router_opts.routing_budgets_algorithm};
     t_conn_cost_params cost_params;
     cost_params.astar_fac = router_opts.astar_fac;
     cost_params.astar_offset = router_opts.astar_offset;
@@ -223,7 +229,7 @@ inline NetResultFlags route_net(ConnectionRouterType& router,
     cost_params.post_target_prune_offset = router_opts.post_target_prune_offset;
     cost_params.bend_cost = router_opts.bend_cost;
     cost_params.pres_fac = pres_fac;
-    cost_params.delay_budget = ((budgeting_inf.if_set()) ? &conn_delay_budget : nullptr);
+    cost_params.delay_budget = nullptr;
 
     // Pre-route to clock source for clock nets (marked as global nets)
     if (net_list.net_is_global(net_id) && router_opts.two_stage_clock_routing) {
@@ -257,28 +263,39 @@ inline NetResultFlags route_net(ConnectionRouterType& router,
             // delay by selecting a direct route from the clock source to the virtual sink
             cost_params.criticality = router_opts.max_criticality;
 
+            // Do not use RCV to route to the drive point of the clock network.
+            router.set_rcv_enabled(false);
+
             if (sink_node == RRNodeId::INVALID()) {
                 VPR_FATAL_ERROR(VPR_ERROR_ROUTE, "Cannot route net \"%s\" through given clock network. Unknown clock network name \"%s\"", net_name.c_str(), clock_network_name.c_str());
             }
 
-            flags = pre_route_to_clock_root(router,
-                                            net_id,
-                                            net_list,
-                                            sink_node,
-                                            cost_params,
-                                            router_opts.high_fanout_threshold,
-                                            tree,
-                                            spatial_route_tree_lookup,
-                                            router_stats,
-                                            is_flat);
+            /* Stage 1 (SOURCE -> clock-network drive point) only needs to run when no clock
+             * sink is routed yet. If setup_net()'s prune kept any sink, its retained path
+             * already carries the SOURCE -> drive-point spine and stage 2 (the loop below)
+             * extends from it. */
+            bool any_clock_sink_routed = !tree.get_reached_isinks().empty();
+            if (!any_clock_sink_routed) {
+                flags = pre_route_to_clock_root(router,
+                                                net_id,
+                                                net_list,
+                                                sink_node,
+                                                cost_params,
+                                                router_opts.high_fanout_threshold,
+                                                tree,
+                                                spatial_route_tree_lookup,
+                                                router_stats,
+                                                is_flat);
 
-            if (flags.success == false)
-                return flags;
+                if (flags.success == false)
+                    return flags;
+            }
         }
     }
 
     if (budgeting_inf.if_set()) {
         budgeting_inf.set_should_reroute(net_id, false);
+        budgeting_inf.set_should_reroute_for_skew(net_id, false);
     }
 
     // explore in order of decreasing criticality (no longer need sink_order array)
@@ -291,13 +308,18 @@ inline NetResultFlags route_net(ConnectionRouterType& router,
 
         cost_params.criticality = pin_criticality[target_pin];
 
-        if (budgeting_inf.if_set()) {
+        bool use_rcv = budgeting_inf.should_use_rcv(net_id, target_pin);
+        if (use_rcv) {
             conn_delay_budget.max_delay = budgeting_inf.get_max_delay_budget(net_id, target_pin);
             conn_delay_budget.target_delay = budgeting_inf.get_delay_target(net_id, target_pin);
             conn_delay_budget.min_delay = budgeting_inf.get_min_delay_budget(net_id, target_pin);
             conn_delay_budget.short_path_criticality = budgeting_inf.get_crit_short_path(net_id, target_pin);
             conn_delay_budget.routing_budgets_algorithm = router_opts.routing_budgets_algorithm;
+            cost_params.delay_budget = &conn_delay_budget;
+        } else {
+            cost_params.delay_budget = nullptr;
         }
+        router.set_rcv_enabled(use_rcv);
 
         profiling::conn_start();
 
