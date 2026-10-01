@@ -1169,9 +1169,6 @@ struct t_ap_opts {
     /// The threshold to ignore nets with higher fanout than that value while constructing the solver.
     int ap_high_fanout_threshold;
 
-    /// Vector of strings passed by the user to configure the target density of different physical tiles on the device.
-    std::vector<std::string> ap_partial_legalizer_target_density;
-
     /// Array of string passed by the user to configure the max candidate distance thresholds.
     std::vector<std::string> appack_max_dist_th;
 

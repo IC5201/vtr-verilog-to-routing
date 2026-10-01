@@ -25,6 +25,7 @@
 #include "netlist.h"
 #include "ap_netlist_fwd.h"
 #include "prepack.h"
+#include "type_operate.h"
 
 /**
  * @brief Struct to store fixed block location information
@@ -85,6 +86,9 @@ class APNetlist : public Netlist<APBlockId, APPortId, APPinId, APNetId> {
     /// @brief Returns the molecules that this block represents.
     const std::vector<PackMoleculeId>& block_molecules(const APBlockId id) const;
 
+    /// @brief Returns the native GP primitives in this block (`e_gp_dev_bel`).
+    const std::vector<t_gp_primitive>& block_primitives(const APBlockId id) const;
+
     /// @brief Returns the mobility of this block.
     APBlockMobility block_mobility(const APBlockId id) const;
 
@@ -119,6 +123,14 @@ class APNetlist : public Netlist<APBlockId, APPortId, APPinId, APNetId> {
      *  @param molecules The molecules this block represents
      */
     APBlockId create_block(const std::string& name, const std::vector<PackMoleculeId>& molecules);
+
+    /**
+     * @brief Set the native GP primitives for a block.
+     *
+     * Each primitive already carries `e_gp_dev_bel`. The mass calculator maps
+     * those kinds onto PrimitiveVector dims.
+     */
+    void set_block_primitives(const APBlockId id, std::vector<t_gp_primitive> primitives);
 
     /**
      * @brief Fixes a block at the given location
@@ -199,6 +211,8 @@ class APNetlist : public Netlist<APBlockId, APPortId, APPinId, APNetId> {
   private: // Private Data
     /// @brief Molecules of each block
     vtr::vector_map<APBlockId, std::vector<PackMoleculeId>> block_molecules_;
+    /// @brief Native GP primitives of each block (`e_gp_dev_bel` + BRAM mass).
+    vtr::vector_map<APBlockId, std::vector<t_gp_primitive>> block_primitives_;
     /// @brief Type of each block
     vtr::vector_map<APBlockId, APBlockMobility> block_mobilities_;
     /// @brief Location of each block (if fixed).

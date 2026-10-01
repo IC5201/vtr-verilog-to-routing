@@ -12,21 +12,18 @@
 #include <tuple>
 #include <unordered_set>
 #include <vector>
+#include "dev_chip.h"
+#include "device_db.h"
 #include "flat_placement_bins.h"
 #include "flat_placement_mass_calculator.h"
 #include "primitive_vector.h"
 #include "vtr_assert.h"
 #include "vtr_ndmatrix.h"
 #include "vtr_vector.h"
+#include "vtr_vector_map.h"
 
 class APNetlist;
-class AtomNetlist;
-class DeviceGrid;
-class LogicalModels;
-class Prepacker;
 struct PartialPlacement;
-struct t_logical_block_type;
-struct t_physical_tile_type;
 
 /**
  * @brief Manager class for computing the density of a flat placement.
@@ -63,23 +60,13 @@ class FlatPlacementDensityManager {
      * @brief Construct the density manager.
      *
      *  @param ap_netlist
-     *  @param prepacker
-     *  @param atom_netlist
-     *  @param device_grid
-     *  @param logical_block_types
-     *  @param physical_tile_types
-     *  @param models
-     *  @param target_density_arg_strs
+     *      Native AP blocks whose mass fills the bins.
+     *  @param device_db
+     *      Placement-oriented 7-series grid (tile type + root-tile offsets).
      *  @param log_verbosity
      */
     FlatPlacementDensityManager(const APNetlist& ap_netlist,
-                                const Prepacker& prepacker,
-                                const AtomNetlist& atom_netlist,
-                                const DeviceGrid& device_grid,
-                                const std::vector<t_logical_block_type>& logical_block_types,
-                                const std::vector<t_physical_tile_type>& physical_tile_types,
-                                const LogicalModels& models,
-                                const std::vector<std::string>& target_density_arg_strs,
+                                const PLACE::DeviceDB& device_db,
                                 int log_verbosity);
 
     /**
@@ -172,10 +159,20 @@ class FlatPlacementDensityManager {
 
     /**
      * @brief Returns the target density for the given bin.
+     *
+     * Currently 1.0 for every bin.
      */
     inline float get_bin_target_density(FlatPlacementBinId bin_id) const {
         VTR_ASSERT_SAFE(bin_id.is_valid());
         return bin_target_density_[bin_id];
+    }
+
+    /**
+     * @brief Returns the tile type of the given bin.
+     */
+    inline FBS::TileType get_bin_tile_type(FlatPlacementBinId bin_id) const {
+        VTR_ASSERT_SAFE(bin_id.is_valid());
+        return bin_tile_type_[bin_id];
     }
 
     /**
@@ -232,10 +229,10 @@ class FlatPlacementDensityManager {
                                                  const PartialPlacement& p_placement) const;
 
     /**
-     * @brief Return a primitive vector where any dim which is used in the netlist
-     *        is set to 1, and any unused dim is set to 0.
+     * @brief Return a primitive vector where any dim which is used is set to 1,
+     *        and any unused dim is set to 0.
      *
-     * This information can be used to ignore dims which are unused.
+     * Currently every real GP_DEV_BEL dim is marked used (value 1).
      */
     const PrimitiveVector& get_used_dims_mask() const {
         return used_dims_mask_;
@@ -297,13 +294,15 @@ class FlatPlacementDensityManager {
     /// @brief The set of overfilled bins.
     std::unordered_set<FlatPlacementBinId> overfilled_bins_;
 
-    /// @brief A vector mask representing the used primitive vector dimensions
-    ///        in the netlist. If a dimension is used, its value will be set to
-    ///        1 in this vector, and 0 otherwise.
+    /// @brief Primitive-vector mask of dims treated as used. Every real
+    ///        GP_DEV_BEL dim is set to 1.
     PrimitiveVector used_dims_mask_;
 
-    /// @brief The target density of each bin.
+    /// @brief Target density of each bin. Currently 1.0 for every bin.
     vtr::vector<FlatPlacementBinId, float> bin_target_density_;
+
+    /// @brief The tile type of each bin. Indexed by bin ID.
+    vtr::vector_map<FlatPlacementBinId, FBS::TileType> bin_tile_type_;
 
     /// @brief The verbosity of log messages in this class.
     const int log_verbosity_;

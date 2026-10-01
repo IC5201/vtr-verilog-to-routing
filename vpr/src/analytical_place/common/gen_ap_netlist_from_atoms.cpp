@@ -10,17 +10,22 @@
 #include "ap_netlist.h"
 #include "atom_netlist.h"
 #include "atom_netlist_fwd.h"
+#include "globals.h"
 #include "logical_ram_infer.h"
+#include "logic_types.h"
 #include "netlist_fwd.h"
 #include "partition.h"
 #include "partition_region.h"
 #include "prepack.h"
 #include "region.h"
+#include "type_operate.h"
 #include "user_place_constraints.h"
 #include "vtr_assert.h"
 #include "vtr_geometry.h"
+#include "vtr_log.h"
 #include "vtr_time.h"
 #include "vtr_vector.h"
+#include <cctype>
 #include <unordered_set>
 #include <vector>
 
@@ -50,6 +55,45 @@ static bool is_single_point_pr(const PartitionRegion& pr) {
 
     // If all prior passes, this is a single-point partition region.
     return true;
+}
+
+/**
+ * @brief Map a VTR atom onto a GP_DEV_BEL so mass/legalization can run.
+ *
+ * Native netlists already carry `e_gp_dev_bel`. This is only the atom-netlist
+ * import path used by the current VPR AP entry.
+ */
+static e_gp_dev_bel gp_bel_from_atom(const AtomNetlist& atom_netlist, AtomBlockId atom_id) {
+    switch (atom_netlist.block_type(atom_id)) {
+        case AtomBlockType::INPAD:
+        case AtomBlockType::OUTPAD:
+            return e_gp_dev_bel::IO;
+        case AtomBlockType::BLOCK:
+            break;
+        default:
+            return e_gp_dev_bel::UNKNOWN;
+    }
+
+    const LogicalModels& models = g_vpr_ctx.device().arch->models;
+    std::string name = models.model_name(atom_netlist.block_model(atom_id));
+    for (char& c : name) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+
+    if (name == ".names" || name == "names") {
+        return e_gp_dev_bel::LUT;
+    }
+    if (name == ".latch" || name == "latch") {
+        return e_gp_dev_bel::FF;
+    }
+    if (name.find("multiply") != std::string::npos || name.find("mult") != std::string::npos
+        || name.find("dsp") != std::string::npos) {
+        return e_gp_dev_bel::DSP;
+    }
+    if (name.find("ram") != std::string::npos || name.find("memory") != std::string::npos) {
+        return e_gp_dev_bel::BRAM;
+    }
+    return e_gp_dev_bel::UNKNOWN;
 }
 
 APNetlist gen_ap_netlist_from_atoms(const AtomNetlist& atom_netlist,
@@ -169,6 +213,27 @@ APNetlist gen_ap_netlist_from_atoms(const AtomNetlist& atom_netlist,
                 ap_netlist.set_block_loc(ap_blk_id, loc);
             }
         }
+    }
+
+    // Fill native GP primitives from the atoms in each AP block. Mass and
+    // partial legalization read these; empty primitives make every mass 0.
+    for (APBlockId ap_blk_id : ap_netlist.blocks()) {
+        std::vector<t_gp_primitive> primitives;
+        for (PackMoleculeId molecule_id : ap_netlist.block_molecules(ap_blk_id)) {
+            const t_pack_molecule& mol = prepacker.get_molecule(molecule_id);
+            for (AtomBlockId atom_id : mol.atom_block_ids) {
+                if (!atom_id.is_valid()) {
+                    continue;
+                }
+                t_gp_primitive prim;
+                prim.bel = gp_bel_from_atom(atom_netlist, atom_id);
+                if (prim.bel == e_gp_dev_bel::UNKNOWN) {
+                    continue;
+                }
+                primitives.push_back(prim);
+            }
+        }
+        ap_netlist.set_block_primitives(ap_blk_id, std::move(primitives));
     }
 
     // Cleanup the netlist by marking undesirable nets.

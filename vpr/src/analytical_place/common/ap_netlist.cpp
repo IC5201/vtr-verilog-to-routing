@@ -7,6 +7,7 @@
 
 #include "ap_netlist.h"
 #include <string>
+#include <utility>
 #include <vector>
 #include "atom_netlist_fwd.h"
 #include "netlist_fwd.h"
@@ -21,6 +22,12 @@ const std::vector<PackMoleculeId>& APNetlist::block_molecules(const APBlockId id
     VTR_ASSERT_SAFE(valid_block_id(id));
 
     return block_molecules_[id];
+}
+
+const std::vector<t_gp_primitive>& APNetlist::block_primitives(const APBlockId id) const {
+    VTR_ASSERT_SAFE(valid_block_id(id));
+
+    return block_primitives_[id];
 }
 
 APBlockMobility APNetlist::block_mobility(const APBlockId id) const {
@@ -62,6 +69,7 @@ APBlockId APNetlist::create_block(const std::string& name, const std::vector<Pac
 
     // Initialize the data
     block_molecules_.insert(blk_id, molecules);
+    block_primitives_.insert(blk_id, {});
     block_mobilities_.insert(blk_id, APBlockMobility::MOVEABLE);
     block_locs_.insert(blk_id, APFixedBlockLoc());
 
@@ -73,6 +81,11 @@ APBlockId APNetlist::create_block(const std::string& name, const std::vector<Pac
     VTR_ASSERT(block_mobility(blk_id) == APBlockMobility::MOVEABLE);
 
     return blk_id;
+}
+
+void APNetlist::set_block_primitives(const APBlockId id, std::vector<t_gp_primitive> primitives) {
+    VTR_ASSERT_SAFE(valid_block_id(id));
+    block_primitives_[id] = std::move(primitives);
 }
 
 void APNetlist::set_block_loc(const APBlockId id, const APFixedBlockLoc& loc) {
@@ -148,6 +161,7 @@ APNetId APNetlist::create_net(const std::string& name, const AtomNetId atom_net_
 void APNetlist::clean_blocks_impl(const vtr::vector_map<APBlockId, APBlockId>& block_id_map) {
     // Update all the block molecules
     block_molecules_ = clean_and_reorder_values(block_molecules_, block_id_map);
+    block_primitives_ = clean_and_reorder_values(block_primitives_, block_id_map);
     // Update all the block mobilities
     block_mobilities_ = clean_and_reorder_values(block_mobilities_, block_id_map);
     // Update the fixed block locations
@@ -186,6 +200,7 @@ void APNetlist::rebuild_net_refs_impl(const vtr::vector_map<APPinId, APPinId>& /
 void APNetlist::shrink_to_fit_impl() {
     // Block data
     block_molecules_.shrink_to_fit();
+    block_primitives_.shrink_to_fit();
     block_mobilities_.shrink_to_fit();
     block_locs_.shrink_to_fit();
 
@@ -217,6 +232,8 @@ void APNetlist::remove_net_impl(const APNetId /*net_id*/) {
  */
 bool APNetlist::validate_block_sizes_impl(size_t num_blocks) const {
     if (block_molecules_.size() != num_blocks)
+        return false;
+    if (block_primitives_.size() != num_blocks)
         return false;
     if (block_mobilities_.size() != num_blocks)
         return false;

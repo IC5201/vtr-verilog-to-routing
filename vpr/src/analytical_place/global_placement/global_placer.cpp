@@ -18,7 +18,9 @@
 #include "ap_netlist.h"
 #include "ap_netlist_fwd.h"
 #include "atom_netlist.h"
+#include "device_db.h"
 #include "device_grid.h"
+#include "dev_chip.h"
 #include "flat_placement_bins.h"
 #include "flat_placement_density_manager.h"
 #include "globals.h"
@@ -45,7 +47,6 @@ std::unique_ptr<GlobalPlacer> make_global_placer(e_ap_analytical_solver analytic
                                                  std::shared_ptr<PlaceDelayModel> place_delay_model,
                                                  float ap_timing_tradeoff,
                                                  bool generate_mass_report,
-                                                 const std::vector<std::string>& target_density_arg_strs,
                                                  unsigned num_threads,
                                                  int log_verbosity) {
     return std::make_unique<SimPLGlobalPlacer>(analytical_solver_type,
@@ -61,7 +62,6 @@ std::unique_ptr<GlobalPlacer> make_global_placer(e_ap_analytical_solver analytic
                                                place_delay_model,
                                                ap_timing_tradeoff,
                                                generate_mass_report,
-                                               target_density_arg_strs,
                                                num_threads,
                                                log_verbosity);
 }
@@ -79,7 +79,6 @@ SimPLGlobalPlacer::SimPLGlobalPlacer(e_ap_analytical_solver analytical_solver_ty
                                      std::shared_ptr<PlaceDelayModel> place_delay_model,
                                      float ap_timing_tradeoff,
                                      bool generate_mass_report,
-                                     const std::vector<std::string>& target_density_arg_strs,
                                      unsigned num_threads,
                                      int log_verbosity)
     : GlobalPlacer(ap_netlist, log_verbosity)
@@ -105,14 +104,15 @@ SimPLGlobalPlacer::SimPLGlobalPlacer(e_ap_analytical_solver analytical_solver_ty
 
     // Build the density manager used by the partial legalizer.
     VTR_LOGV(log_verbosity_ >= 10, "\tBuilding the density manager...\n");
+    // Temporary bridge: convert the VTR device into the Xilinx DeviceDB the
+    // original legalizer stack now consumes. Drop this once the AP flow
+    // constructs a DeviceDB directly.
+    (void)logical_block_types;
+    (void)physical_tile_types;
+    (void)models;
+    PLACE::DeviceDB device_db = PLACE::DeviceDB::from_vtr_device(device_grid);
     density_manager_ = std::make_shared<FlatPlacementDensityManager>(ap_netlist_,
-                                                                     prepacker,
-                                                                     atom_netlist,
-                                                                     device_grid,
-                                                                     logical_block_types,
-                                                                     physical_tile_types,
-                                                                     models,
-                                                                     target_density_arg_strs,
+                                                                     device_db,
                                                                      log_verbosity_);
     if (generate_mass_report)
         density_manager_->generate_mass_report();
@@ -122,8 +122,6 @@ SimPLGlobalPlacer::SimPLGlobalPlacer(e_ap_analytical_solver analytical_solver_ty
     partial_legalizer_ = make_partial_legalizer(partial_legalizer_type,
                                                 ap_netlist_,
                                                 density_manager_,
-                                                prepacker,
-                                                models,
                                                 log_verbosity_);
 }
 
@@ -165,21 +163,15 @@ static void print_placement_stats(const PartialPlacement& p_placement,
     VTR_LOG("\tAverage overfill magnitude: %f\n", avg_overfill);
 
     // Print the number of overfilled tiles per type.
-    const auto& physical_tile_types = g_vpr_ctx.device().physical_tile_types;
-    const auto& device_grid = g_vpr_ctx.device().grid;
-    std::vector<unsigned> overfilled_tiles_by_type(physical_tile_types.size(), 0);
+    std::vector<unsigned> overfilled_tiles_by_type(FBS::k_tile_type_count, 0);
     for (FlatPlacementBinId bin_id : density_manager.get_overfilled_bins()) {
-        const auto& bin_region = density_manager.flat_placement_bins().bin_region(bin_id);
-        auto tile_loc = t_physical_tile_loc((int)bin_region.xmin(),
-                                            (int)bin_region.ymin(),
-                                            0);
-        auto tile_type = device_grid.get_physical_type(tile_loc);
-        overfilled_tiles_by_type[tile_type->index]++;
+        FBS::TileType tile_type = density_manager.get_bin_tile_type(bin_id);
+        overfilled_tiles_by_type[static_cast<size_t>(tile_type)]++;
     }
     VTR_LOG("\tOverfilled bins by tile type:\n");
-    for (size_t type_idx = 0; type_idx < physical_tile_types.size(); type_idx++) {
+    for (size_t type_idx = 0; type_idx < FBS::k_tile_type_count; type_idx++) {
         VTR_LOG("\t\t%10s: %zu\n",
-                physical_tile_types[type_idx].name.c_str(),
+                FBS::tile_type_name(static_cast<FBS::TileType>(type_idx)),
                 overfilled_tiles_by_type[type_idx]);
     }
 

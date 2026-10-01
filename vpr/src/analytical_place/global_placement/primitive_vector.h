@@ -12,9 +12,8 @@
  * dims are controlled outside of this class and are used to encode more complex
  * meaning based on the mass of primitives (by the Mass Calculator class).
  *
- * To keep track of the meaning of each dimension, the mass calculator also
- * has a primitive dim manager class. That class is what holds all of the
- * available dims and lookups between the models and the dims.
+ * Dim index equals `e_gp_dev_bel`. The mass calculator keeps a
+ * PrimitiveDimManager only for printable dim names.
  */
 
 #include <cmath>
