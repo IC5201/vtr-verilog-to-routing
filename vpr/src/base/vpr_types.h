@@ -71,6 +71,20 @@ enum class ScreenUpdatePriority {
     MAJOR = 1
 };
 
+/**
+ * @brief How often interactive graphics pause for the user (--graphics_pause).
+ *
+ * Set with --graphics_pause (every_update, major, final_stage, never). The values are
+ * ordered against ScreenUpdatePriority: an update pauses when
+ * int(priority) >= int(mode), except for FINAL_STAGE, which has its own rule.
+ */
+enum class e_graphics_pause {
+    EVERY_UPDATE = 0,  ///<Pause on every update, including MINOR ones (e.g. each temperature)
+    MAJOR_UPDATES = 1, ///<Pause on MAJOR updates only
+    FINAL_STAGE = 2,   ///<Skip graphics until the last requested stage completes, then pause once
+    NEVER = 3          ///<Never pause
+};
+
 #ifdef VTR_ENABLE_DEBUG_LOGGING
 constexpr bool VTR_ENABLE_DEBUG_LOGGING_CONST_EXPR = true;
 #else
@@ -104,6 +118,8 @@ enum class e_router_lookahead {
     EXTENDED_MAP,
     ///@brief Simple distance-based lookahead
     SIMPLE,
+    ///@brief Lookahead which treats the x and y components of a route as separable
+    SEPARABLE,
     ///@brief A no-operation lookahead which always returns zero
     NO_OP
 };
@@ -653,6 +669,7 @@ struct t_file_name_opts {
     std::string read_flat_place_file;
     std::string write_flat_place_file;
     std::string write_legalized_flat_place_file;
+    std::string write_post_gp_flat_place_file;
     std::string write_block_usage;
     bool verify_file_digests;
     ///@brief How much annotation to write into flat placement files.
@@ -663,6 +680,7 @@ struct t_file_name_opts {
 struct t_netlist_opts {
     e_const_gen_inference const_gen_inference = e_const_gen_inference::COMB;
     bool absorb_buffer_luts = true;
+    bool merge_constant_generators = false;
     bool sweep_dangling_primary_ios = true;
     bool sweep_dangling_blocks = true;
     bool sweep_dangling_nets = true;
@@ -1151,8 +1169,15 @@ struct t_ap_opts {
     /// True if analytical placement is supposed to be done in the CAD flow. False if otherwise.
     e_stage_action doAP;
 
+    /// True if the AP flow should stop after Global Placement (i.e. skip full
+    /// legalization and detailed placement). This is set by --global_place.
+    bool stop_after_global_placement;
+
     /// The type of analytical solver the Global Placer in the AP flow will use.
     e_ap_analytical_solver analytical_solver_type;
+
+    /// How the analytical solver uses its threads across the per dimension linear systems.
+    e_ap_solver_threading solver_threading;
 
     /// The type of partial legalizer the Global Placer in the AP flow will use.
     e_ap_partial_legalizer partial_legalizer_type;
@@ -1628,7 +1653,7 @@ struct t_vpr_setup {
     t_timing_inf Timing;                 ///<timing information
     float constant_net_delay;            ///<timing information when place and route not run
     bool ShowGraphics;                   ///<option to show graphics
-    int GraphPause;                      ///<user interactiveness graphics option
+    e_graphics_pause GraphPause;         ///<user interactiveness graphics option
     bool SaveGraphics;                   ///<option to save graphical contents to pdf, png, or svg
     std::string GraphicsCommands;        ///<commands to control graphics settings
     std::string RendererType;            ///<rendering backend: "immediate" (SW QPainter, no batching; most

@@ -135,7 +135,7 @@ void SetupVPR(const t_options* options,
               std::vector<t_segment_inf>& segments,
               t_timing_inf* timing,
               bool* showGraphics,
-              int* graphPause,
+              e_graphics_pause* graphPause,
               bool* saveGraphics,
               std::string* graphicsCommands,
               std::string* rendererType,
@@ -172,6 +172,7 @@ void SetupVPR(const t_options* options,
     fileNameOpts->read_flat_place_file = options->read_flat_place_file;
     fileNameOpts->write_flat_place_file = options->write_flat_place_file;
     fileNameOpts->write_legalized_flat_place_file = options->write_legalized_flat_place_file;
+    fileNameOpts->write_post_gp_flat_place_file = options->write_post_gp_flat_place_file;
     fileNameOpts->flat_place_verbosity = options->flat_place_verbosity;
     fileNameOpts->write_block_usage = options->write_block_usage;
 
@@ -287,6 +288,7 @@ void SetupVPR(const t_options* options,
         && !options->do_legalize
         && !options->do_placement
         && !options->do_analytical_placement
+        && !options->do_global_placement
         && !options->do_routing
         && !options->do_analysis) {
         // If none specified, we do the AP flow.
@@ -327,6 +329,16 @@ void SetupVPR(const t_options* options,
             packerOpts->doPacking = e_stage_action::SKIP;
             placerOpts->do_placement = e_stage_action::SKIP;
             apOpts->doAP = e_stage_action::DO;
+        }
+
+        if (options->do_global_placement && !options->do_analytical_placement) {
+            // Global placement is the first stage of the Analytical Placement
+            // flow. Run the AP flow, but stop it right after global placement.
+            // If the full AP flow was also requested, it takes precedence.
+            packerOpts->doPacking = e_stage_action::SKIP;
+            placerOpts->do_placement = e_stage_action::SKIP;
+            apOpts->doAP = e_stage_action::DO;
+            apOpts->stop_after_global_placement = true;
         }
 
         if (options->do_packing) {
@@ -614,6 +626,7 @@ static void setup_anneal_sched(const t_options& Options,
 static void setup_ap_opts(const t_options& options,
                           t_ap_opts& apOpts) {
     apOpts.analytical_solver_type = options.ap_analytical_solver.value();
+    apOpts.solver_threading = options.ap_solver_threading.value();
     apOpts.partial_legalizer_type = options.ap_partial_legalizer.value();
     apOpts.full_legalizer_type = options.ap_full_legalizer.value();
     apOpts.detailed_placer_type = options.ap_detailed_placer.value();
@@ -627,6 +640,9 @@ static void setup_ap_opts(const t_options& options,
     apOpts.num_threads = options.num_workers.value();
     apOpts.log_verbosity = options.ap_verbosity.value();
     apOpts.generate_mass_report = options.ap_generate_mass_report.value();
+    // This is set later, based on the stage options, if only global placement
+    // should be run.
+    apOpts.stop_after_global_placement = false;
 }
 
 void setup_packer_opts(const t_options& Options,
@@ -666,6 +682,7 @@ void setup_packer_opts(const t_options& Options,
 static void setup_netlist_opts(const t_options& Options, t_netlist_opts& NetlistOpts) {
     NetlistOpts.const_gen_inference = Options.const_gen_inference;
     NetlistOpts.absorb_buffer_luts = Options.absorb_buffer_luts;
+    NetlistOpts.merge_constant_generators = Options.merge_constant_generators;
     NetlistOpts.sweep_dangling_primary_ios = Options.sweep_dangling_primary_ios;
     NetlistOpts.sweep_dangling_nets = Options.sweep_dangling_nets;
     NetlistOpts.sweep_dangling_blocks = Options.sweep_dangling_blocks;

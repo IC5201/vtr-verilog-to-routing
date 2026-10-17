@@ -22,6 +22,7 @@
 #include "flat_placement_bins.h"
 #include "flat_placement_density_manager.h"
 #include "globals.h"
+#include "gp_solution_quality_estimation.h"
 #include "logic_types.h"
 #include "partial_legalizer.h"
 #include "partial_placement.h"
@@ -33,6 +34,7 @@
 #include "vtr_time.h"
 
 std::unique_ptr<GlobalPlacer> make_global_placer(e_ap_analytical_solver analytical_solver_type,
+                                                 e_ap_solver_threading solver_threading,
                                                  e_ap_partial_legalizer partial_legalizer_type,
                                                  const APNetlist& ap_netlist,
                                                  const Prepacker& prepacker,
@@ -49,6 +51,7 @@ std::unique_ptr<GlobalPlacer> make_global_placer(e_ap_analytical_solver analytic
                                                  unsigned num_threads,
                                                  int log_verbosity) {
     return std::make_unique<SimPLGlobalPlacer>(analytical_solver_type,
+                                               solver_threading,
                                                partial_legalizer_type,
                                                ap_netlist,
                                                prepacker,
@@ -67,6 +70,7 @@ std::unique_ptr<GlobalPlacer> make_global_placer(e_ap_analytical_solver analytic
 }
 
 SimPLGlobalPlacer::SimPLGlobalPlacer(e_ap_analytical_solver analytical_solver_type,
+                                     e_ap_solver_threading solver_threading,
                                      e_ap_partial_legalizer partial_legalizer_type,
                                      const APNetlist& ap_netlist,
                                      const Prepacker& prepacker,
@@ -101,6 +105,7 @@ SimPLGlobalPlacer::SimPLGlobalPlacer(e_ap_analytical_solver analytical_solver_ty
                                      place_delay_model_,
                                      ap_timing_tradeoff,
                                      num_threads,
+                                     solver_threading,
                                      log_verbosity_);
 
     // Build the density manager used by the partial legalizer.
@@ -136,7 +141,7 @@ static void print_placement_stats(const PartialPlacement& p_placement,
                                   const PreClusterTimingManager& pre_cluster_timing_manager) {
     // Print the placement HPWL
     VTR_LOG("\tPlacement objective HPWL: %f\n", p_placement.get_hpwl(ap_netlist));
-    VTR_LOG("\tPlacement estimated wirelength: %g\n", p_placement.estimate_post_placement_wirelength(ap_netlist));
+    VTR_LOG("\tPlacement estimated wirelength: %g\n", estimate_post_routing_wire_usage(p_placement, ap_netlist, g_vpr_ctx.device().grid));
 
     // Print the timing information.
     if (pre_cluster_timing_manager.is_valid()) {
