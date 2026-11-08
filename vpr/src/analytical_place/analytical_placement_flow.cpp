@@ -10,10 +10,12 @@
 #include <cmath>
 #include <memory>
 #include "PlacementDelayModelCreator.h"
+#include "PreClusterDelayCalculator.h"
 #include "PreClusterTimingManager.h"
 #include "analytical_solver.h"
 #include "ap_draw_manager.h"
 #include "ap_netlist.h"
+#include "ap_timing_estimation.h"
 #include "atom_netlist.h"
 #include "cluster_util.h"
 #include "detailed_placer.h"
@@ -216,6 +218,21 @@ static PartialPlacement run_global_placer(const t_ap_opts& ap_opts,
                                           prepacker,
                                           p_placement);
         VTR_LOG("\tPlacement estimated wirelength: %g\n", estimate_post_routing_wire_usage(p_placement, ap_netlist, device_ctx.grid));
+
+        // Print the estimated post-routing timing of the flat placement.
+        if (pre_cluster_timing_manager.is_valid()) {
+            FlatPlacementArcDelayEstimator arc_delay_estimator(ap_netlist,
+                                                               *pre_cluster_timing_manager.get_delay_calculator_ptr(),
+                                                               *place_delay_model,
+                                                               device_ctx.grid);
+            t_ap_timing_estimate timing_estimate = estimate_post_routing_timing(p_placement,
+                                                                                arc_delay_estimator,
+                                                                                pre_cluster_timing_manager.get_delay_calculator_ptr());
+            VTR_LOG("\tPlacement estimated CPD: %f ns\n", timing_estimate.cpd * 1e9);
+            VTR_LOG("\tPlacement estimated sTNS: %f ns\n", timing_estimate.stns * 1e9);
+            VTR_LOG("\tPlacement estimated sWNS: %f ns\n", timing_estimate.swns * 1e9);
+        }
+
         return p_placement;
     } else {
         // Run the Global Placer
@@ -250,8 +267,18 @@ void run_analytical_placement_flow(t_vpr_setup& vpr_setup) {
     const UserPlaceConstraints& constraints = g_vpr_ctx.floorplanning().constraints;
     const t_ap_opts& ap_opts = vpr_setup.APOpts;
 
+    // Reject relative placement macros because AP cannot enforce them.
+    if (g_vpr_ctx.floorplanning().relative_macros.get_num_macros() > 0) {
+        VPR_FATAL_ERROR(VPR_ERROR_AP,
+                        "User-defined relative placement macros are not supported in the "
+                        "analytical placement flow. Use the traditional flow (--pack --place) instead.");
+    }
+
     // Run the prepacker
-    const Prepacker prepacker(atom_nlist, device_ctx.arch->models, device_ctx.logical_block_types);
+    const Prepacker prepacker(atom_nlist,
+                              device_ctx.arch->models,
+                              device_ctx.logical_block_types,
+                              g_vpr_ctx.floorplanning().relative_macros);
 
     // Pre-compute the pre-clustering timing delays. This object will be passed
     // into the global placer and the full legalizer to make them timing driven.

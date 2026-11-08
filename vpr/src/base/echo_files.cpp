@@ -134,6 +134,7 @@ void alloc_and_load_echo_file_info() {
     // Timing Graphs
     setEchoFileName(E_ECHO_TRACK_TO_PIN_MAP, "track_to_pin_map.echo");
     setEchoFileName(E_ECHO_PRE_PACKING_TIMING_GRAPH, "timing_graph.pre_pack.echo");
+    setEchoFileName(E_ECHO_AP_POST_ROUTING_TIMING_ESTIMATE_GRAPH, "timing_graph.ap_post_routing_estimate.echo");
     setEchoFileName(E_ECHO_INITIAL_PLACEMENT_TIMING_GRAPH, "timing_graph.place_initial.echo");
     setEchoFileName(E_ECHO_FINAL_PLACEMENT_TIMING_GRAPH, "timing_graph.place_final.echo");
     setEchoFileName(E_ECHO_FINAL_ROUTING_TIMING_GRAPH, "timing_graph.route_final.echo");
@@ -156,6 +157,7 @@ void alloc_and_load_echo_file_info() {
     setEchoFileName(E_ECHO_PB_GRAPH, "pb_graph.echo");
     setEchoFileName(E_ECHO_LB_TYPE_RR_GRAPH, "lb_type_rr_graph.echo");
     setEchoFileName(E_ECHO_ARCH, "arch.echo");
+    setEchoFileName(E_ECHO_DEVICE_GRID, "device_grid.echo");
     setEchoFileName(E_ECHO_PLACEMENT_CRITICAL_PATH, "placement_critical_path.echo");
     setEchoFileName(E_ECHO_PLACEMENT_LOWER_BOUND_SINK_DELAYS, "placement_lower_bound_sink_delays.echo");
     setEchoFileName(E_ECHO_PLACEMENT_LOGIC_SINK_DELAYS, "placement_logic_sink_delays.echo");
